@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/luna/catkin_ws/src/shao_thesis_mpc/build/devel/setup.sh
