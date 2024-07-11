@@ -6,6 +6,9 @@
 #include <iostream>
 #include <fstream>
 #include <tf2/LinearMath/Quaternion.h>
+// #include <geometry_msgs/Point.h>
+#include <geometry_msgs/PoseArray.h>
+#include <vector>
 //mpc controller
 #include "../include/shao_thesis_mpc/thesis_mpc.h"               
 //ROS
@@ -46,23 +49,6 @@ double norm(double x, double Finite) {
     }
 }
 
-// double ScalingLayer(double x,double scale){return x*scale;}
-// float ScalingLayer(const Ort::Value& value, double scale) {
-//     const float* data = value.GetTensorData<float>();
-//     return static_cast<float>(*data) * scale;
-// }
-// double SoftplusLayer(double x){return log(1+exp(x));}
-// float SoftplusLayer(const Ort::Value& value) {
-//     const float* data = value.GetTensorData<float>();
-//     double x = static_cast<float>(*data);
-//     return log(1 + exp(x));
-// }
-// float generateGussianAction(float mean,float stddev){
-//  std::random_device rd;
-//  std::mt19937 gen(rd());
-//  std::normal_distribution<float> dist(mean, stddev);
-//  return dist(gen);
-// }
 
 double calculateRate(double currentValue, double previousValue) {
     return (currentValue - previousValue) / 0.1;
@@ -78,11 +64,13 @@ public:
     double siny_cosp, cosy_cosp, sinp;
     double UAV_yaw, UAV_phi;
     double UAV_E, UAV_N, UAV_U, UAV_p, UAV_q, UAV_r;
-    string   guided_state;
+    string guided_state;
+    vector<Point> path;
 
     void imu_callback(const sensor_msgs::Imu::ConstPtr& msg);
     void pos_callback(const nav_msgs::Odometry::ConstPtr& msg);
     void guided_callback(const mavros_msgs::State::ConstPtr& msg);
+    void trajectory_callback(const geometry_msgs::PoseArray::ConstPtr& msg);
 };
 
 void Listener::imu_callback(const sensor_msgs::Imu::ConstPtr& msg) {
@@ -94,7 +82,7 @@ void Listener::imu_callback(const sensor_msgs::Imu::ConstPtr& msg) {
     qua_w = msg->orientation.w;
     qua_x = msg->orientation.x;
     qua_y = msg->orientation.y;
-    qua_z = msg->orientation.z;
+    qua_z = msg->orientation.z; 
 
     UAV_p = msg->angular_velocity.x;
     UAV_q = msg->angular_velocity.y;
@@ -120,58 +108,17 @@ void Listener::guided_callback(const mavros_msgs::State::ConstPtr& msg) {
     guided_state = msg->mode;
 }
 
-std::vector<Point> unpackCSV(const std::string& filepath) {
-    std::vector<Point> path;
-    std::ifstream file(filepath);
-    std::string line;
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string cell;
-        Point p;
+void Listener::trajectory_callback(const geometry_msgs::PoseArray::ConstPtr& msg) {
+    path.clear(); // Clear previous path points
 
-        std::getline(ss, cell, ',');
-        try {
-            p.x = std::stod(cell);
-        } catch (const std::invalid_argument& e) {
-            std::cerr << "Invalid argument for p.x: " << cell << std::endl;
-            continue;
-        } catch (const std::out_of_range& e) {
-            std::cerr << "Out of range error for p.x: " << cell << std::endl;
-            continue;
-        }
-
-        std::getline(ss, cell);
-        try {
-            p.y = std::stod(cell);
-        } catch (const std::invalid_argument& e) {
-            std::cerr << "Invalid argument for p.y: " << cell << std::endl;
-            continue;
-        } catch (const std::out_of_range& e) {
-            std::cerr << "Out of range error for p.y: " << cell << std::endl;
-            continue;
-        }
-
-        path.push_back(p);
+    for (const auto& pose : msg->poses) {
+        Point new_point;
+        new_point.x = pose.position.x;
+        new_point.y = pose.position.y;
+        path.push_back(new_point);
     }
-    return path;
 }
 
-std::vector<Point> rotateAndTranslatePath(const std::vector<Point>& path, double rotationAngle, double translationX, double translationY) {
-    std::vector<Point> transformedPath;
-    for (const auto& p : path) {
-        // 旋轉
-        double rotated_x = p.x * std::cos(rotationAngle) - p.y * std::sin(rotationAngle);
-        double rotated_y = p.x * std::sin(rotationAngle) + p.y * std::cos(rotationAngle);
-
-        // 平移
-        rotated_x += translationX;
-        rotated_y += translationY;
-
-        // 加入到新的 transformedPath 中
-        transformedPath.push_back({rotated_x, rotated_y});
-    }
-    return transformedPath;
-}
 
 std::vector<double> crossProduct(const std::vector<double>& v1, const std::vector<double>& v2) {
     return {
@@ -316,12 +263,12 @@ double r_cmd;
 double UAV_roll_cmd;
 double UAV_yaw_cmd;
 double distance_error_past = 0;
-//
+
 // Atitude Hold Parameter
 double Up_cmd;
 double Lon_P;
 double UAV_pitch_cmd;
-//
+
 double r_e;
 float N_r_e;
 float N_r;
@@ -341,22 +288,8 @@ double standarddeviation;
 bool modechange = false;
 
 int main(int argc, char** argv) {
-    // Initialize  Onnxruntime Environment
-    // Ort::Env env(ORT_LOGGING_LEVEL_WARNING,"ONNXRuntime");
-    // // Set the number of threads
-    // Ort::SessionOptions session_options;
-    // session_options.SetIntraOpNumThreads(1);
-    // // Load Onnx Model
-    // Ort::Session session(env,"/home/luna/catkin_ws/src/che_ppo_test/include/che_ppo_test/che_ppo_agent.onnx",session_options);// 檔案位置
-    // Ort::AllocatorWithDefaultOptions allocator;
-    // Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    // printModelInfo(session,allocator);
-    // // cout<<session.GetInputTypeInfo(1).GetTensorTypeAndShapeInfo().GetElementType();
-
-    // std::vector<const char*> input_node_names = {"observation"};
-    // std::vector<const char*> output_node_names = {"tanh","vp_fc5_Add"};
-    // std::array<int64_t, 2> input_shape = {1, 11};
+    ROS_INFO("A");
 
     ros::init(argc, argv, "thesis_main");
     ros::NodeHandle n;
@@ -364,22 +297,19 @@ int main(int argc, char** argv) {
     ros::Subscriber sub_imu = n.subscribe<sensor_msgs::Imu>("mavros/imu/data", 1, &Listener::imu_callback, &listener);
     ros::Subscriber sub_position = n.subscribe<nav_msgs::Odometry>("mavros/global_position/local", 1, &Listener::pos_callback, &listener);
     ros::Subscriber sub_guided = n.subscribe<mavros_msgs::State>("mavros/state", 1, &Listener::guided_callback, &listener);
+    ros::Subscriber sub_trajectory = n.subscribe("/predicted_trajectory", 1, &Listener::trajectory_callback, &listener);
+    
+    //what is this??
     mavros_msgs::AttitudeTarget r;
     mavros_msgs::ParamSet s;
     mavros_msgs::ParamSet e;
+
     ros::Publisher pub = n.advertise<mavros_msgs::AttitudeTarget>("mavros/setpoint_raw/attitude", 1);
     ros::ServiceClient pubth = n.serviceClient<mavros_msgs::ParamSet>("mavros/param/set");
     ros::Rate rate(10.0);
-    std::vector<Point> path;
-    std::vector<Point> trstaticansformedPath ;
-    double translationX;
-    double translationY ;
-    double   rotationAngle;
-    std::ofstream ofs;
-    ofs.open("/home/luna/output.csv");
+
     while (ros::ok()) {
-        // std::cout << (rtObj.Ramdon_num) << std::endl;
-        // std::cout << listener.guided_state << std::endl;
+
         if (listener.guided_state == "GUIDED") {
             s.request.param_id = "SERVO3_MIN";
             s.request.value.integer = 1600;
@@ -387,55 +317,13 @@ int main(int argc, char** argv) {
             e.request.param_id = "SERVO4_FUNCTION";
             e.request.value.integer = 0;
             r.header.stamp = ros::Time::now();
-            if (modechange ==true){ 
-                thesis_mpc rtObj;
-                path = unpackCSV("/home/luna/catkin_ws/src/shao_thesis_mpc/include/shao_thesis_mpc/translated_rotated_path_points.csv");
-            } 
-            std::cout << "Original Path (First 10 Points):" << std::endl;
-            ofs << "Original Path (First 10 Points):" << "\n";
-            for (int i = 0; i < 10 && i < path.size(); ++i) {
-                std::cout << "Point " << i << ": x = " << path[i].x << ", y = " << path[i].y << std::endl;
-                ofs << "Point " << i << ": x = " << path[i].x << ", y = " << path[i].y << "\n";
-            }
-             double P_E = listener.UAV_E, P_N = listener.UAV_N; // 當前位置
-            
+
+            double P_E = listener.UAV_E, P_N = listener.UAV_N; // 當前位置
+
             double psi =listener.UAV_yaw; // 當前航向角
             double uav_r = listener.UAV_r;
-
-            if (modechange == true){
-                translationX = P_E;
-                translationY = P_N;
-                rotationAngle =psi;
-            }
-            auto transformedPath = rotateAndTranslatePath(path, rotationAngle, translationX, translationY);
-            std::cout << " rotationAngle:  " << rad2deg(rotationAngle) << "translationX: "<<translationX<<" translationY: "<< translationY<< std::endl;
-            ofs << " rotationAngle:  " << rad2deg(rotationAngle) << "translationX: "<<translationX<<" translationY: "<< translationY << "\n";
             
-            auto result = fcn(P_N, P_E, transformedPath, psi, uav_r);
-            
-            std::cout << "Transformed Path (First 10 Points):" << std::endl;
-             ofs <<   "Transformed Path (First 10 Points):" << "\n";
-            for (int i = 0; i < 10 && i < transformedPath.size(); ++i) {
-                std::cout << "Point " << i << ": x = " << transformedPath[i].x << ", y = " << transformedPath[i].y << std::endl;
-                ofs <<   "Point " << i << ": x = " << transformedPath[i].x << ", y = " << transformedPath[i].y << "\n";
-            }
-
-        //     std::ofstream outFile("/home/luna/Desktop/transformed_path.csv");
-        //     if (outFile.is_open()) {
-        // // 写入表头
-        //      outFile << "x,y\n";
-
-        // // 写入点到文件
-        //     for (const auto& point : transformedPath) {
-        //     outFile << point.x << "," << point.y << "\n";
-        //     }
-
-        // // 关闭文件
-        //      outFile.close();
-        //     std::cout << "数据已保存到 transformed_path.csv" << std::endl;
-        //     } else {
-        //     std::cerr << "无法打开文件" << std::endl;
-        //      }
+            auto result = fcn(listener.UAV_N, listener.UAV_E, listener.path, listener.UAV_yaw, listener.UAV_r);
 
             // 提取元組中的值
             double N = std::get<0>(result);
@@ -465,20 +353,13 @@ int main(int argc, char** argv) {
             std::cout << " uav_N: " << P_N << " uav_E: " << P_E << " UAV_psi: " <<  rad2deg(psi)<< "UAV_yaw_function"<< rad2deg(uav_yaw_function) << std::endl;
             std::cout << "=====================================================================" << std::endl;
 
-           ofs << "=====================================================================" << "\n";
-            ofs  << " , a_cmd: " << a_cmd <<"\n";
-            ofs << " , delta_psi: " << delta_psi << " , Cross-track distance: " << distance_error << "\n";
-            ofs << " ,N: " << N << " ,E: " << E << " ,heta: " << heta << "\n";
-            ofs << " uav_N: " << P_N << " uav_E: " << P_E << " UAV_psi: " <<  rad2deg(psi)<< "UAV_yaw_function"<< rad2deg(uav_yaw_function) << "\n";
-            ofs << "=====================================================================" <<"\n";
-            
             // Path Following Position Controller
             rtObj.rtU.uav_r = listener.UAV_r;
             rtObj.rtU.r_cmd = delta_psi;
             rtObj.step();
             UAV_roll_cmd = rtObj.rtY.Out1;
-             std::cout << "Roll_cmd: " <<rad2deg(-rtObj.rtY.Out1) <<" Roll_cmd_rad: "<<-rtObj.rtY.Out1<<  std::endl;
-              ofs  << "Roll_cmd: " <<rad2deg(-rtObj.rtY.Out1) <<" Roll_cmd_rad: "<<-rtObj.rtY.Out1<< "\n";
+            std::cout << "Roll_cmd: " <<rad2deg(-rtObj.rtY.Out1) <<" Roll_cmd_rad: "<<-rtObj.rtY.Out1<<  std::endl;
+            // ofs  << "Roll_cmd: " <<rad2deg(-rtObj.rtY.Out1) <<" Roll_cmd_rad: "<<-rtObj.rtY.Out1<< "\n";
             UAV_yaw_cmd = 0;
 
             // Height Control

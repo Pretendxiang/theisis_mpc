@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>shao_thesis_mpc</name>
+  <name>ranger_mpc</name>
   <version>0.0.0</version>
-  <description>The shao_thesis_mpc package</description>
+  <description>The ranger_mpc package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->

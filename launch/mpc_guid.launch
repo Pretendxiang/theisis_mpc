@@ -1,0 +1,7 @@
+<launch>
+    <!-- Launch the Python node -->
+    <node name="mpctrajectory_node" pkg="mpcchf_ros" type="main.py" output="screen" />
+
+    <!-- Launch the C++ node -->
+    <node name="guidance_node" pkg="ranger_mpc" type="thesis_mpc_main" output="screen" />
+</launch>
